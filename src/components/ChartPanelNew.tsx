@@ -123,8 +123,8 @@ const ChartPanelNew: React.FC<ChartPanelProps> = ({ data, loading }) => {
     }
 
     // Hard map: 113 → outside (red), 115 → inside (blue)
-    const is113 = (m: string) => m === '113' || /(^|[^0-9])113([^0-9]|$)/.test(m);
-    const is115 = (m: string) => m === '115' || /(^|[^0-9])115([^0-9]|$)/.test(m);
+    const is113 = (m: string) => m === '113' || m === '113.0' || m === '113.00';
+    const is115 = (m: string) => m === '115' || m === '115.0' || m === '115.00';
 
     const p113 = pool.filter(p => is113(p.module));
     const p115 = pool.filter(p => is115(p.module));
@@ -135,6 +135,12 @@ const ChartPanelNew: React.FC<ChartPanelProps> = ({ data, loading }) => {
     console.log('  Sample p113 modules:', Array.from(new Set(p113.map(p => p.module))));
     console.log('  Sample p115 modules:', Array.from(new Set(p115.map(p => p.module))));
     console.log('  All unique modules in pool:', Array.from(new Set(pool.map(p => p.module))));
+    console.log('  Sample raw points with module info:', pool.slice(0, 5).map(p => ({ module: p.module, f: p.f, t: p.t })));
+    console.log('  Testing module detection:');
+    console.log('    is113("113"):', is113('113'));
+    console.log('    is115("115"):', is115('115'));
+    console.log('    is113("113.0"):', is113('113.0'));
+    console.log('    is115("115.0"):', is115('115.0'));
 
     // If firmware only tags series by an index, you can also map here:
     // e.g., treat module "1" as 113 and "2" as 115:

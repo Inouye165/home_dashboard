@@ -12,19 +12,11 @@ const Dashboard: React.FC = () => {
     <div
       className="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen"
       style={{
-        // Use dynamic viewport height on mobile browsers
-        minHeight: '100dvh'
+        // Safe areas without a separate spacer element
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)'
       }}
     >
-      {/* Safe-area top padding for notches/Dynamic Island */}
-      <div
-        className="md:pt-8"
-        style={{
-          // On mobile, push content down by the safe-area inset plus a little extra
-          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)'
-        }}
-      />
-
       <div className="w-full max-w-7xl mx-auto px-4 md:px-6">
         <header className="mb-6 md:mb-8 text-center">
           <h1 className="text-3xl md:text-4xl font-bold text-gray-800 mb-1 md:mb-2">
@@ -56,7 +48,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Mobile layout */}
+        {/* Mobile layout (no fixed heights) */}
         <div className="block md:hidden space-y-4">
           <div className="w-full">
             <ChartPanelNew data={data} loading={loading} />
@@ -78,19 +70,14 @@ const Dashboard: React.FC = () => {
             <WeatherPanel />
           </div>
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
+            {/* Keep a defined height on desktop only */}
             <div className="h-72 lg:h-80">
               <ChartPanelNew data={data} loading={loading} />
             </div>
           </div>
         </div>
 
-        <footer
-          className="mt-12 mb-8 text-center text-gray-500 text-xs md:text-sm"
-          style={{
-            // Keep footer clear of the iOS home indicator on edge-to-edge
-            paddingBottom: 'env(safe-area-inset-bottom, 0px)'
-          }}
-        >
+        <footer className="mt-12 mb-8 text-center text-gray-500 text-xs md:text-sm">
           <p>ESP8266 Smart Home Dashboard v2.1 - Built with React & TypeScript</p>
         </footer>
       </div>

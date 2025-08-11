@@ -132,11 +132,15 @@ export const useESP8266Data = () => {
              // Remove multiple consecutive commas anywhere
              sanitizedText = sanitizedText.replace(/,{2,}/g, ',');
              
-             // If the JSON appears to be truncated (missing closing brackets), try to complete it
-             const openBraces = (sanitizedText.match(/\{/g) || []).length;
-             const closeBraces = (sanitizedText.match(/\}/g) || []).length;
-             const openBrackets = (sanitizedText.match(/\[/g) || []).length;
-             const closeBrackets = (sanitizedText.match(/\]/g) || []).length;
+                           // If the JSON appears to be truncated (missing closing brackets), try to complete it
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const openBraces = (sanitizedText.match(/\{/g) || []).length;
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const closeBraces = (sanitizedText.match(/\}/g) || []).length;
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const openBrackets = (sanitizedText.match(/\[/g) || []).length;
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const closeBrackets = (sanitizedText.match(/\]/g) || []).length;
              
              // Add missing closing brackets/braces (fixed infinite loop)
              const opens  = (sanitizedText.match(/\{/g)  ?? []).length;
@@ -182,6 +186,7 @@ export const useESP8266Data = () => {
               }));
               allSeriesPoints.push(...module113Points);
               console.log('Module 113 series processed successfully, added', series113Data.points.length, 'points');
+              console.log('Module 113 sample points:', module113Points.slice(0, 3).map((p: any) => ({ module: p.module, f: p.f, u: p.u })));
             } else {
               console.error('Module 113 series data does not have expected structure:', series113Data);
             }
@@ -235,13 +240,14 @@ export const useESP8266Data = () => {
             }
             
             if (series115Data && series115Data.points) {
-              // Preserve original module identifier or use '115' if not present
+              // Force module 115 identifier regardless of what's in the JSON
               const module115Points = series115Data.points.map((point: any) => ({
                 ...point,
-                module: point.module || '115' // Use existing module or default to '115'
+                module: '115' // Force module 115 identifier
               }));
               allSeriesPoints.push(...module115Points);
               console.log('Module 115 series processed successfully, added', series115Data.points.length, 'points');
+              console.log('Module 115 sample points:', module115Points.slice(0, 3).map((p: any) => ({ module: p.module, f: p.f, u: p.u })));
             } else {
               console.error('Module 115 series data does not have expected structure:', series115Data);
             }
