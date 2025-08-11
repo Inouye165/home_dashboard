@@ -15,10 +15,16 @@ app.use('/api/esp8266/113', createProxyMiddleware({
   pathRewrite: {
     '^/api/esp8266/113': ''
   },
+  timeout: 10000, // 10 second timeout
+  proxyTimeout: 10000,
   onProxyRes: function (proxyRes, req, res) {
     proxyRes.headers['Access-Control-Allow-Origin'] = '*';
     proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
     proxyRes.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
+  },
+  onError: function (err, req, res) {
+    console.log(`Proxy error for 113: ${err.message}`);
+    res.status(503).json({ error: 'ESP8266 device 113 not available', message: err.message });
   }
 }));
 
@@ -28,10 +34,16 @@ app.use('/api/esp8266/115', createProxyMiddleware({
   pathRewrite: {
     '^/api/esp8266/115': ''
   },
+  timeout: 10000, // 10 second timeout
+  proxyTimeout: 10000,
   onProxyRes: function (proxyRes, req, res) {
     proxyRes.headers['Access-Control-Allow-Origin'] = '*';
     proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
     proxyRes.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
+  },
+  onError: function (err, req, res) {
+    console.log(`Proxy error for 115: ${err.message}`);
+    res.status(503).json({ error: 'ESP8266 device 115 not available', message: err.message });
   }
 }));
 

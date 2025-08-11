@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 
+console.log('__BUILD_TAG__ useESP8266Data v5 - SANITIZATION FIX', new Date().toISOString());
+
 export interface ESP8266Data {
   module113?: {
     temperature?: number;
@@ -31,8 +33,10 @@ export const useESP8266Data = () => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = async () => {
+    console.log('fetchData called');
     try {
       setError(null);
+      console.log('Starting fetchData...');
       
       // Fetch data from ESP8266 modules via proxy server
       const [module113Response, module115Response, series113Response, series115Response] = await Promise.allSettled([
@@ -43,69 +47,166 @@ export const useESP8266Data = () => {
       ]);
 
       const newData: ESP8266Data = {};
+      console.log('Starting to process data...');
 
       // Process module 113 data
       if (module113Response.status === 'fulfilled' && module113Response.value.ok) {
-        const module113Data = await module113Response.value.json();
-        console.log('Module 113 data:', module113Data);
-        newData.module113 = {
-          temperature: module113Data.tempF, // Convert tempF to temperature
-          timestamp: module113Data.unix_ms && module113Data.unix_ms > 0 ? new Date(module113Data.unix_ms).toISOString() : module113Data.time_str, // Use unix_ms if available and valid, fallback to time_str
-          humidity: module113Data.humidity || null,
-          pressure: module113Data.pressure || null
-        };
-      } else {
-        console.log('Module 113 response failed:', module113Response);
-      }
+                 const module113Data = await module113Response.value.json();
+         console.log('Module 113 data:', module113Data);
+         console.log('Module 113 data type:', typeof module113Data);
+         console.log('Module 113 data keys:', Object.keys(module113Data));
+                 newData.module113 = {
+           temperature: module113Data.tempF, // Convert tempF to temperature
+           timestamp: module113Data.unix_ms && module113Data.unix_ms > 0 ? new Date(module113Data.unix_ms).toISOString() : module113Data.time_str, // Use unix_ms if available and valid, fallback to time_str
+           humidity: module113Data.humidity || undefined,
+           pressure: module113Data.pressure || undefined
+         };
+         console.log('Module 113 processed successfully:', newData.module113);
+             } else {
+         console.log('Module 113 response failed:', module113Response);
+       }
+       console.log('After processing Module 113, newData:', newData);
 
       // Process module 115 data
       if (module115Response.status === 'fulfilled' && module115Response.value.ok) {
-        const module115Data = await module115Response.value.json();
-        console.log('Module 115 data:', module115Data);
-        newData.module115 = {
-          temperature: module115Data.tempF, // Convert tempF to temperature
-          timestamp: module115Data.unix_ms && module115Data.unix_ms > 0 ? new Date(module115Data.unix_ms).toISOString() : module115Data.time_str, // Use unix_ms if available and valid, fallback to time_str
-          humidity: module115Data.humidity || null,
-          pressure: module115Data.pressure || null
-        };
-      } else {
-        console.log('Module 115 response failed:', module115Response);
-      }
+                 const module115Data = await module115Response.value.json();
+         console.log('Module 115 data:', module115Data);
+         console.log('Module 115 data type:', typeof module115Data);
+         console.log('Module 115 data keys:', Object.keys(module115Data));
+                 newData.module115 = {
+           temperature: module115Data.tempF, // Convert tempF to temperature
+           timestamp: module115Data.unix_ms && module115Data.unix_ms > 0 ? new Date(module115Data.unix_ms).toISOString() : module115Data.time_str, // Use unix_ms if available and valid, fallback to time_str
+           humidity: module115Data.humidity || undefined,
+           pressure: module115Data.pressure || undefined
+         };
+         console.log('Module 115 processed successfully:', newData.module115);
+             } else {
+         console.log('Module 115 response failed:', module115Response);
+       }
+       console.log('After processing Module 115, newData:', newData);
 
       // Process series data from both modules
       const allSeriesPoints: any[] = [];
       
-      // Process Module 113 series data
-      if (series113Response.status === 'fulfilled' && series113Response.value.ok) {
-        const series113Data = await series113Response.value.json();
-        console.log('Module 113 series data:', series113Data);
-        if (series113Data.points) {
-          // Add module identifier to each point
-          const module113Points = series113Data.points.map((point: any) => ({
-            ...point,
-            module: '1' // Module 113
-          }));
-          allSeriesPoints.push(...module113Points);
-        }
-      } else {
-        console.log('Module 113 series response failed:', series113Response);
-      }
+             // Process Module 113 series data
+       if (series113Response.status === 'fulfilled' && series113Response.value.ok) {
+         try {
+           // Always read as text first to avoid body stream issues
+           let series113Data;
+           const series113Text = await series113Response.value.text();
+           console.log('Module 113 series raw response length:', series113Text.length);
+           console.log('Module 113 series raw response first 500 chars:', series113Text.substring(0, 500));
+           
+                      if (series113Text.trim() === '') {
+             console.error('Module 113 series response is empty');
+             // Continue processing other data instead of returning early
+           } else {
+             // Sanitize the JSON by removing trailing commas and fixing common issues
+             let sanitizedText = series113Text;
+             
+             // Remove trailing commas before closing brackets/braces (more aggressive)
+             sanitizedText = sanitizedText.replace(/,+(\s*[}\]])/g, '$1');
+             
+             // Remove trailing commas at the end of the string
+             sanitizedText = sanitizedText.replace(/,+(\s*)$/g, '$1');
+             
+             // Remove any remaining trailing commas before closing brackets (catch edge cases)
+             sanitizedText = sanitizedText.replace(/,+(\s*})/g, '$1');
+             sanitizedText = sanitizedText.replace(/,+(\s*\])/g, '$1');
+             
+             // Remove multiple consecutive commas anywhere
+             sanitizedText = sanitizedText.replace(/,{2,}/g, ',');
+            
+            console.log('Sanitized JSON (first 500 chars):', sanitizedText.substring(0, 500));
+            
+            // Try to parse the sanitized JSON
+            try {
+              series113Data = JSON.parse(sanitizedText);
+              console.log('Module 113 series data (JSON):', series113Data);
+            } catch (parseError) {
+              console.error('Module 113 series JSON parse error after sanitization:', parseError);
+              console.error('Module 113 series raw response that failed to parse:', series113Text);
+              // Continue processing other data instead of returning early
+            }
+            
+            if (series113Data && series113Data.points) {
+              // Add module identifier to each point
+              const module113Points = series113Data.points.map((point: any) => ({
+                ...point,
+                module: '113' // Module 113
+              }));
+              allSeriesPoints.push(...module113Points);
+              console.log('Module 113 series processed successfully, added', series113Data.points.length, 'points');
+            } else {
+              console.error('Module 113 series data does not have expected structure:', series113Data);
+            }
+           }
+         } catch (seriesError) {
+           console.error('Module 113 series processing failed:', seriesError);
+         }
+       } else {
+         console.log('Module 113 series response failed:', series113Response);
+       }
 
-      // Process Module 115 series data
-      if (series115Response.status === 'fulfilled' && series115Response.value.ok) {
-        const series115Data = await series115Response.value.json();
-        console.log('Module 115 series data:', series115Data);
-        if (series115Data.points) {
-          // Add module identifier to each point
-          const module115Points = series115Data.points.map((point: any) => ({
-            ...point,
-            module: '2' // Module 115
-          }));
-          allSeriesPoints.push(...module115Points);
-        }
-      } else {
-        console.log('Module 115 series response failed:', series115Response);
-      }
+             // Process Module 115 series data
+       if (series115Response.status === 'fulfilled' && series115Response.value.ok) {
+         try {
+           // Always read as text first to avoid body stream issues
+           let series115Data;
+           const series115Text = await series115Response.value.text();
+           console.log('Module 115 series raw response length:', series115Text.length);
+           console.log('Module 115 series raw response first 500 chars:', series115Text.substring(0, 500));
+           
+                      if (series115Text.trim() === '') {
+             console.error('Module 115 series response is empty');
+             // Continue processing other data instead of returning early
+           } else {
+             // Sanitize the JSON by removing trailing commas and fixing common issues
+             let sanitizedText = series115Text;
+             
+             // Remove trailing commas before closing brackets/braces (more aggressive)
+             sanitizedText = sanitizedText.replace(/,+(\s*[}\]])/g, '$1');
+             
+             // Remove trailing commas at the end of the string
+             sanitizedText = sanitizedText.replace(/,+(\s*)$/g, '$1');
+             
+             // Remove any remaining trailing commas before closing brackets (catch edge cases)
+             sanitizedText = sanitizedText.replace(/,+(\s*})/g, '$1');
+             sanitizedText = sanitizedText.replace(/,+(\s*\])/g, '$1');
+             
+             // Remove multiple consecutive commas anywhere
+             sanitizedText = sanitizedText.replace(/,{2,}/g, ',');
+            
+            console.log('Sanitized JSON (first 500 chars):', sanitizedText.substring(0, 500));
+            
+            // Try to parse the sanitized JSON
+            try {
+              series115Data = JSON.parse(sanitizedText);
+              console.log('Module 115 series data (JSON):', series115Data);
+            } catch (parseError) {
+              console.error('Module 115 series JSON parse error after sanitization:', parseError);
+              console.error('Module 115 series raw response that failed to parse:', series115Text);
+              // Continue processing other data instead of returning early
+            }
+            
+            if (series115Data && series115Data.points) {
+              // Add module identifier to each point
+              const module115Points = series115Data.points.map((point: any) => ({
+                ...point,
+                module: '115' // Module 115
+              }));
+              allSeriesPoints.push(...module115Points);
+              console.log('Module 115 series processed successfully, added', series115Data.points.length, 'points');
+            } else {
+              console.error('Module 115 series data does not have expected structure:', series115Data);
+            }
+           }
+         } catch (seriesError) {
+           console.error('Module 115 series processing failed:', seriesError);
+         }
+       } else {
+         console.log('Module 115 series response failed:', series115Response);
+       }
 
       // Combine all series data
       if (allSeriesPoints.length > 0) {
@@ -118,9 +219,11 @@ export const useESP8266Data = () => {
       }
 
       console.log('Final data object:', newData);
+      console.log('Setting data with:', newData);
       setData(newData);
       setLoading(false);
     } catch (err) {
+      console.error('Error in fetchData:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
       setLoading(false);
     }

@@ -1,277 +1,247 @@
-import React from 'react';
-import { BarChart3 } from 'lucide-react';
-import { ESP8266Data } from '../hooks/useESP8266Data';
+import React, { useMemo } from 'react';
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
   Tooltip,
   Legend,
-  TimeScale
-} from 'chart.js';
-import { Line } from 'react-chartjs-2';
-import 'chartjs-adapter-date-fns';
+} from 'recharts';
+import { BarChart3 } from 'lucide-react';
+import { ESP8266Data } from '../hooks/useESP8266Data';
+
+interface Point {
+  time: number;        // epoch ms
+  outside?: number;    // °F (module 113)
+  inside?: number;     // °F (module 115)
+}
 
 interface ChartPanelProps {
   data: ESP8266Data | null;
   loading: boolean;
 }
 
-// Register Chart.js components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  TimeScale
-);
+function toMillis(t: unknown): number {
+  if (typeof t === 'number') return t < 1_000_000_000_000 ? t * 1000 : t; // sec→ms heuristic
+  if (typeof t === 'string') {
+    const n = Number(t);
+    if (!Number.isNaN(n)) return n < 1_000_000_000_000 ? n * 1000 : n;
+    const d = new Date(t).getTime();
+    return Number.isNaN(d) ? NaN : d;
+  }
+  return NaN;
+}
+
+function getTempF(p: any): number | undefined {
+  const fRaw = p.f ?? p.F ?? p.tempF ?? p.fahrenheit ?? p.temp ?? p.v;
+  if (typeof fRaw === 'number') return fRaw;
+  if (typeof fRaw === 'string') {
+    const n = Number(fRaw);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+function getModuleId(p: any): string {
+  const raw = p.module ?? p.m ?? p.mod ?? '';
+  const s = String(raw);
+  const digits = s.match(/\d+/)?.[0];
+  return digits ?? s; // prefer numeric id if present
+}
 
 const ChartPanelNew: React.FC<ChartPanelProps> = ({ data, loading }) => {
+  const chartData: Point[] = useMemo(() => {
+    console.log('Chart prepareChartData called:', data);
 
-    // Chart configuration
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'top' as const,
-        labels: {
-          boxWidth: 12,
-          padding: 8,
-          font: {
-            size: window.innerWidth < 640 ? 10 : 12
-          }
-        }
-      },
-      title: {
-        display: window.innerWidth >= 640,
-        text: 'Temperature History',
-        font: {
-          size: window.innerWidth < 640 ? 14 : 16
-        }
-      },
-    },
-    scales: {
-              x: {
-          type: 'time' as const,
-          time: {
-            unit: 'hour' as const,
-            displayFormats: {
-              hour: 'HH:mm',
-              day: 'MMM dd'
-            }
-          },
-          title: {
-            display: window.innerWidth >= 640,
-            text: 'Time',
-            font: {
-              size: window.innerWidth < 640 ? 10 : 12
-            }
-          },
-          ticks: {
-            font: {
-              size: window.innerWidth < 640 ? 8 : 10
-            }
-          }
-        },
-      y: {
-        title: {
-          display: window.innerWidth >= 640,
-          text: 'Temperature (°F)',
-          font: {
-            size: window.innerWidth < 640 ? 10 : 12
-          }
-        },
-        ticks: {
-          font: {
-            size: window.innerWidth < 640 ? 8 : 10
-          }
-        }
+    // If series missing, show a single-point fallback from current temps
+    let rawPoints: any[] | undefined = (data as any)?.series?.points;
+    if (rawPoints && !Array.isArray(rawPoints) && typeof rawPoints === 'object') {
+      rawPoints = Object.values(rawPoints);
+    }
+
+    if (!Array.isArray(rawPoints) || rawPoints.length === 0) {
+      console.log('No series data; using current temps fallback.');
+      const now = Date.now();
+      const outside = (data as any)?.module113?.temperature; // 113
+      const inside  = (data as any)?.module115?.temperature; // 115
+      const fallback: Point[] = [];
+      if (typeof outside === 'number' || typeof inside === 'number') {
+        fallback.push({
+          time: now,
+          outside: typeof outside === 'number' ? outside : undefined,
+          inside:  typeof inside  === 'number' ? inside  : undefined,
+        });
       }
-    }
-  };
-
-  // Prepare chart data
-  const prepareChartData = () => {
-    if (!data?.series?.points) {
-      return {
-        labels: [],
-        datasets: []
-      };
+      return fallback;
     }
 
-    const points = data.series.points;
-    console.log('Chart points:', points);
-    console.log('First point sample:', points[0]);
-    console.log('Last point sample:', points[points.length - 1]);
-    console.log('Sample timestamps from first 5 points:');
-    points.slice(0, 5).forEach((point: any, index: number) => {
-      console.log(`Point ${index}: u=${point.u}, f=${point.f}, module=${point.module}`);
-    });
+    // Normalize points
+    type NPoint = { t: number; module: string; f: number };
+    const normalized: NPoint[] = rawPoints
+      .map((p: any) => {
+        const tMs = toMillis(
+          p.u ?? p.ts ?? p.t ?? p.time ?? p.timestamp ?? p.date ?? p.datetime
+        );
+        const fNum = getTempF(p);
+        const mod = getModuleId(p);
+        return { t: tMs, module: String(mod), f: fNum as number };
+      })
+      .filter(p => Number.isFinite(p.t) && Number.isFinite(p.f) && p.module);
 
-    // Sort points by timestamp
-    const sortedPoints = points.sort((a: any, b: any) => {
-      const timeA = a.u || a.unix_ms || a.timestamp;
-      const timeB = b.u || b.unix_ms || b.timestamp;
-      return timeA - timeB;
-    });
+    if (normalized.length === 0) return [];
 
-    // Get the last 24 hours of data
+    // Time window: prefer last 7d, then 30d, else all (expanded for better coverage)
     const now = Date.now();
-    const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000); // 24 hours in milliseconds
-    console.log('Filtering data from:', new Date(twentyFourHoursAgo).toISOString(), 'to:', new Date(now).toISOString());
+    const H24 = 24 * 60 * 60 * 1000;
+    const D7  = 7  * H24;
+    const D30 = 30 * H24;
+    const filterBySince = (since: number) => normalized.filter(p => p.t >= since);
+
+    console.log('Time filtering debug:');
+    console.log('  Total normalized points:', normalized.length);
+    console.log('  Now timestamp:', now);
+    console.log('  24h ago:', now - H24);
+    console.log('  7d ago:', now - D7);
+    console.log('  30d ago:', now - D30);
     
-    const recentPoints = sortedPoints.filter((point: any) => {
-      const timestamp = point.u || point.unix_ms || point.timestamp;
-      if (typeof timestamp === 'number') {
-        // If timestamp is in seconds, convert to milliseconds
-        const timestampMs = timestamp < 1000000000000 ? timestamp * 1000 : timestamp;
-        const isRecent = timestampMs >= twentyFourHoursAgo;
-        if (!isRecent) {
-          console.log('Filtering out old point:', new Date(timestampMs).toISOString(), 'temp:', point.f);
-        }
-        return isRecent;
-      }
-      return true; // Keep points with invalid timestamps for now
-    });
+    let pool = filterBySince(now - D7);  // Start with 7 days instead of 24h
+    console.log('  Points in last 7d:', pool.length);
     
-    console.log('Total points after 24h filter:', recentPoints.length);
+    if (pool.length === 0) {
+      pool = filterBySince(now - D30);  // Try 30 days
+      console.log('  Points in last 30d:', pool.length);
+    }
+    if (pool.length === 0) {
+      pool = normalized.slice();  // Use all data
+      console.log('  Using all data points:', pool.length);
+    }
+    if (pool.length > 5000) {
+      pool = pool.slice(-5000);  // Limit to last 5000 points
+      console.log('  Limited to last 5000 points');
+    }
 
-    // Separate data by module
-    const module113Points = recentPoints.filter((point: any) => !point.module || point.module === '1');
-    const module115Points = recentPoints.filter((point: any) => point.module === '2');
+    // Hard map: 113 → outside (red), 115 → inside (blue)
+    const is113 = (m: string) => m === '113' || /(^|[^0-9])113([^0-9]|$)/.test(m);
+    const is115 = (m: string) => m === '115' || /(^|[^0-9])115([^0-9]|$)/.test(m);
 
-    console.log('Module 113 points:', module113Points.length);
-    console.log('Module 115 points:', module115Points.length);
+    const p113 = pool.filter(p => is113(p.module));
+    const p115 = pool.filter(p => is115(p.module));
 
-        // Create separate datasets for each module to ensure proper line connections
-    const outsideData = recentPoints
-      .filter((point: any) => !point.module || point.module === '1')
-      .map((point: any) => ({
-        x: (() => {
-          let timestamp = point.u || point.unix_ms || point.timestamp;
-          if (typeof timestamp === 'string') {
-            if (timestamp.includes('-') || timestamp.includes('/')) {
-              return new Date(timestamp);
-            } else {
-              timestamp = parseInt(timestamp, 10);
-            }
-          }
-          if (typeof timestamp === 'number') {
-            if (timestamp < 1000000000000) {
-              timestamp = timestamp * 1000;
-            }
-            return new Date(timestamp);
-          }
-          console.warn('Invalid timestamp:', timestamp, 'using current time');
-          return new Date();
-        })(),
-        y: point.f || point.tempF || point.temperature
-      }));
+    console.log('Module filtering results:');
+    console.log('  p113 points:', p113.length);
+    console.log('  p115 points:', p115.length);
+    console.log('  Sample p113 modules:', Array.from(new Set(p113.map(p => p.module))));
+    console.log('  Sample p115 modules:', Array.from(new Set(p115.map(p => p.module))));
+    console.log('  All unique modules in pool:', Array.from(new Set(pool.map(p => p.module))));
 
-    const insideData = recentPoints
-      .filter((point: any) => point.module === '2')
-      .map((point: any) => ({
-        x: (() => {
-          let timestamp = point.u || point.unix_ms || point.timestamp;
-          if (typeof timestamp === 'string') {
-            if (timestamp.includes('-') || timestamp.includes('/')) {
-              return new Date(timestamp);
-            } else {
-              timestamp = parseInt(timestamp, 10);
-            }
-          }
-          if (typeof timestamp === 'number') {
-            if (timestamp < 1000000000000) {
-              timestamp = timestamp * 1000;
-            }
-            return new Date(timestamp);
-          }
-          console.warn('Invalid timestamp:', timestamp, 'using current time');
-          return new Date();
-        })(),
-        y: point.f || point.tempF || point.temperature
-      }));
+    // If firmware only tags series by an index, you can also map here:
+    // e.g., treat module "1" as 113 and "2" as 115:
+    const pIdx1 = pool.filter(p => p.module === '1');
+    const pIdx2 = pool.filter(p => p.module === '2');
+    const use113 = p113.length ? p113 : pIdx1.length ? pIdx1 : [];
+    const use115 = p115.length ? p115 : pIdx2.length ? pIdx2 : [];
 
-    console.log('Outside data points:', outsideData.length);
-    console.log('Inside data points:', insideData.length);
-    console.log('Sample outside data:', outsideData.slice(0, 3));
-    console.log('Sample inside data:', insideData.slice(0, 3));
+    // Build union of timestamps
+    const tsSet = new Set<number>([
+      ...use113.map(p => p.t),
+      ...use115.map(p => p.t),
+    ]);
+    const ts = Array.from(tsSet).sort((a, b) => a - b);
 
-    const chartData = {
-      datasets: [
-        {
-          label: 'Outside (°F)',
-          data: outsideData,
-          borderColor: 'rgb(255, 99, 132)',
-          backgroundColor: 'rgba(255, 99, 132, 0.5)',
-          tension: 0.1,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          spanGaps: true
-        },
-        {
-          label: 'Inside (°F)',
-          data: insideData,
-          borderColor: 'rgb(54, 162, 235)',
-          backgroundColor: 'rgba(54, 162, 235, 0.5)',
-          tension: 0.1,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          spanGaps: true
-        }
-      ]
-    };
+    const m113ByT = new Map<number, number>(use113.map(p => [p.t, p.f]));
+    const m115ByT = new Map<number, number>(use115.map(p => [p.t, p.f]));
 
-    console.log('Chart data prepared:', chartData);
-    console.log('Chart data sample:', chartData.datasets[0].data.slice(0, 3));
-    return chartData;
-  };
+    const out: Point[] = ts.map(t => ({
+      time: t,
+      outside: m113ByT.get(t),
+      inside:  m115ByT.get(t),
+    }));
+
+    console.log(
+      `Prepared ${out.length} points. 113(outside)=${use113.length}, 115(inside)=${use115.length}`
+    );
+    if (out.length) {
+      console.log('First/Last:', out[0], out[out.length - 1]);
+      console.log('Sample points with outside temp:', out.filter(p => p.outside !== undefined).slice(0, 3));
+      console.log('Sample points with inside temp:', out.filter(p => p.inside !== undefined).slice(0, 3));
+    }
+    return out;
+  }, [data]);
 
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-lg p-6">
         <div className="flex items-center justify-center h-32">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500" />
         </div>
       </div>
     );
   }
 
-  const chartData = prepareChartData();
+  const hasData = chartData.length > 0;
 
-         return (
-     <div className="bg-white/90 backdrop-blur-md rounded-3xl shadow-2xl border border-white/20 p-4 sm:p-5 lg:p-6 hover:shadow-3xl transition-all duration-500 group" style={{ height: '100%', maxHeight: '100%', overflow: 'hidden' }}>
-       <div className="flex items-center justify-between mb-4 sm:mb-5 lg:mb-6">
-         <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent flex items-center">
-           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-400 to-purple-600 rounded-2xl flex items-center justify-center mr-3 shadow-lg group-hover:shadow-xl transition-shadow duration-300">
-             <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-           </div>
-           <span className="hidden sm:inline">Temperature History</span>
-           <span className="sm:hidden">Temp History</span>
-         </h2>
-                   <div className="text-sm sm:text-base text-gray-600 font-semibold bg-white/60 backdrop-blur-sm px-3 py-1 rounded-full">
-            Last 24 hours
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+          <BarChart3 className="w-5 h-5 mr-2 text-purple-500" />
+          Temperature History
+        </h2>
+        <div className="text-sm text-gray-500">Last 7 days</div>
+      </div>
+
+      <div className="w-full h-64 md:h-72 lg:h-80">
+        {hasData ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="time"
+                type="number"
+                domain={['dataMin', 'dataMax']}
+                tickFormatter={(t) =>
+                  new Date(t as number).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                }
+              />
+              <YAxis unit="°F" />
+              <Tooltip
+                labelFormatter={(t) => new Date(t as number).toLocaleString()}
+                formatter={(val: any, name) => [
+                  typeof val === 'number' ? val.toFixed(1) : val,
+                  name === 'outside' ? 'Outside (113)' : 'Inside (115)',
+                ]}
+              />
+              <Legend
+                formatter={(value) => (value === 'outside' ? 'Outside (113)' : 'Inside (115)')}
+              />
+              <Line
+                type="monotone"
+                dataKey="outside"
+                name="Outside (113)"
+                stroke="rgb(255, 99, 132)"   // red
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="inside"
+                name="Inside (115)"
+                stroke="rgb(54, 162, 235)"   // blue
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-full flex items-center justify-center text-gray-500">
+            No history yet. Waiting for readings…
           </div>
-       </div>
-
-             {chartData.datasets[0].data.length > 0 ? (
-         <div className="flex-1" style={{ height: 'calc(100% - 80px)', minHeight: '200px', maxHeight: '300px' }}>
-           <Line options={chartOptions} data={chartData} />
-         </div>
-       ) : (
-         <div className="text-center py-8 sm:py-12 lg:py-16 text-gray-500 h-full flex flex-col justify-center">
-           <BarChart3 className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 text-gray-300" />
-           <p className="text-base sm:text-lg font-medium mb-1 sm:mb-2">No Historical Data</p>
-           <p className="text-xs sm:text-sm">Temperature history will appear here once data is collected</p>
-         </div>
-       )}
+        )}
+      </div>
     </div>
   );
 };
