@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-console.log('__BUILD_TAG__ useESP8266Data v5 - SANITIZATION FIX', new Date().toISOString());
+console.log('__BUILD_TAG__ useESP8266Data v6 - INFINITE LOOP FIX', new Date().toISOString());
 
 export interface ESP8266Data {
   module113?: {
@@ -91,7 +91,7 @@ export const useESP8266Data = () => {
              // Process Module 113 series data
        if (series113Response.status === 'fulfilled' && series113Response.value.ok) {
          try {
-           // Always read as text first to avoid body stream issues
+           // Read response as text once to avoid body stream issues
            let series113Data;
            const series113Text = await series113Response.value.text();
            console.log('Module 113 series raw response length:', series113Text.length);
@@ -101,8 +101,23 @@ export const useESP8266Data = () => {
              console.error('Module 113 series response is empty');
              // Continue processing other data instead of returning early
            } else {
-             // Sanitize the JSON by removing trailing commas and fixing common issues
+             // Enhanced sanitization for potentially truncated JSON
              let sanitizedText = series113Text;
+             
+             // First, try to detect if the JSON is truncated and attempt to fix it
+             const lastBraceIndex = sanitizedText.lastIndexOf('}');
+             const lastBracketIndex = sanitizedText.lastIndexOf(']');
+             const lastCommaIndex = sanitizedText.lastIndexOf(',');
+             
+             // If the last character is a comma, remove it
+             if (sanitizedText.trim().endsWith(',')) {
+               sanitizedText = sanitizedText.trim().slice(0, -1);
+             }
+             
+             // If we have a trailing comma before a closing bracket/brace, remove it
+             if (lastCommaIndex > lastBraceIndex && lastCommaIndex > lastBracketIndex) {
+               sanitizedText = sanitizedText.substring(0, lastCommaIndex) + sanitizedText.substring(lastCommaIndex + 1);
+             }
              
              // Remove trailing commas before closing brackets/braces (more aggressive)
              sanitizedText = sanitizedText.replace(/,+(\s*[}\]])/g, '$1');
@@ -116,8 +131,38 @@ export const useESP8266Data = () => {
              
              // Remove multiple consecutive commas anywhere
              sanitizedText = sanitizedText.replace(/,{2,}/g, ',');
+             
+             // If the JSON appears to be truncated (missing closing brackets), try to complete it
+             const openBraces = (sanitizedText.match(/\{/g) || []).length;
+             const closeBraces = (sanitizedText.match(/\}/g) || []).length;
+             const openBrackets = (sanitizedText.match(/\[/g) || []).length;
+             const closeBrackets = (sanitizedText.match(/\]/g) || []).length;
+             
+             // Add missing closing brackets/braces (fixed infinite loop)
+             const opens  = (sanitizedText.match(/\{/g)  ?? []).length;
+             const closes = (sanitizedText.match(/\}/g)  ?? []).length;
+             const openSq  = (sanitizedText.match(/\[/g) ?? []).length;
+             const closeSq = (sanitizedText.match(/\]/g) ?? []).length;
+
+             // Add missing closing brackets/braces with safety limits
+             const maxToAdd = 10; // Prevent runaway loops
+             if (closes < opens) {
+               const toAdd = Math.min(opens - closes, maxToAdd);
+               sanitizedText += '}'.repeat(toAdd);
+               if (opens - closes > maxToAdd) {
+                 console.warn('Module 113: Too many missing braces, limiting to', maxToAdd);
+               }
+             }
+             if (closeSq < openSq) {
+               const toAdd = Math.min(openSq - closeSq, maxToAdd);
+               sanitizedText += ']'.repeat(toAdd);
+               if (openSq - closeSq > maxToAdd) {
+                 console.warn('Module 113: Too many missing brackets, limiting to', maxToAdd);
+               }
+             }
             
             console.log('Sanitized JSON (first 500 chars):', sanitizedText.substring(0, 500));
+            console.log('Sanitized JSON (last 200 chars):', sanitizedText.substring(Math.max(0, sanitizedText.length - 200)));
             
             // Try to parse the sanitized JSON
             try {
@@ -130,10 +175,10 @@ export const useESP8266Data = () => {
             }
             
             if (series113Data && series113Data.points) {
-              // Add module identifier to each point
+              // Preserve original module identifier or use '113' if not present
               const module113Points = series113Data.points.map((point: any) => ({
                 ...point,
-                module: '113' // Module 113
+                module: point.module || '113' // Use existing module or default to '113'
               }));
               allSeriesPoints.push(...module113Points);
               console.log('Module 113 series processed successfully, added', series113Data.points.length, 'points');
@@ -151,7 +196,7 @@ export const useESP8266Data = () => {
              // Process Module 115 series data
        if (series115Response.status === 'fulfilled' && series115Response.value.ok) {
          try {
-           // Always read as text first to avoid body stream issues
+           // Read response as text once to avoid body stream issues
            let series115Data;
            const series115Text = await series115Response.value.text();
            console.log('Module 115 series raw response length:', series115Text.length);
@@ -190,10 +235,10 @@ export const useESP8266Data = () => {
             }
             
             if (series115Data && series115Data.points) {
-              // Add module identifier to each point
+              // Preserve original module identifier or use '115' if not present
               const module115Points = series115Data.points.map((point: any) => ({
                 ...point,
-                module: '115' // Module 115
+                module: point.module || '115' // Use existing module or default to '115'
               }));
               allSeriesPoints.push(...module115Points);
               console.log('Module 115 series processed successfully, added', series115Data.points.length, 'points');
