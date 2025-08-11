@@ -105,7 +105,7 @@ class WeatherPanel {
     this.weatherData = null;
     this.loading = true;
     this.error = null;
-    this.location = { lat: 37.98, lon: -122.03, city: 'Concord' };
+    this.location = { lat: 37.9722, lon: -122.0016, city: 'Concord, CA 94518' };
     this.unit = localStorage.getItem('weatherUnit') || 'F';
     this.lastUpdated = null;
     this.isRefreshing = false;
@@ -262,7 +262,7 @@ class WeatherPanel {
       },
       (error) => {
         console.log('Geolocation denied, using Concord, CA:', error.message);
-        this.location = { lat: 37.98, lon: -122.03, city: 'Concord' };
+        this.location = { lat: 37.9722, lon: -122.0016, city: 'Concord, CA 94518' };
         this.fetchWeatherData();
       },
       { timeout: 10000, enableHighAccuracy: false }
